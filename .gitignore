@@ -219,3 +219,7 @@ __marimo__/
 
 # Reference materials (professor's code/papers, not part of this project's own codebase)
 reference_content/
+
+# Ignore agents and claude directories
+.agents/
+.claude/
