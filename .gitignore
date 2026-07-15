@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Reference materials (professor's code/papers, not part of this project's own codebase)
+reference_content/
