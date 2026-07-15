@@ -1,0 +1,13 @@
+torch
+torchvision
+torchaudio
+torch_geometric
+rdkit
+pandas
+numpy
+networkx
+scikit-learn
+psutil
+tqdm
+matplotlib
+streamlit
