@@ -216,6 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.streamlit/
 
 # Reference materials (professor's code/papers, not part of this project's own codebase)
 reference_content/
@@ -223,3 +224,10 @@ reference_content/
 # Ignore agents and claude directories
 .agents/
 .claude/
+
+#ignore OS generated files
+.DS_Store
+
+# Ignore PowerPoint files
+*.pptx
+

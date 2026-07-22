@@ -1,0 +1,15 @@
+{
+  "scheme": "compact",
+  "dimensions": 7,
+  "columns": [
+    "metal_feat_0",
+    "metal_feat_1",
+    "metal_feat_2",
+    "metal_feat_3",
+    "metal_feat_4",
+    "metal_feat_5",
+    "linker_molecular_weight"
+  ],
+  "scaling": "column-wise MinMaxScaler over all 7 dims",
+  "invalid_smiles_count": 16
+}
