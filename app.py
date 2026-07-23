@@ -21,9 +21,11 @@ import streamlit as st
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
+from black_hole_sparsification import apply_black_hole_sparsification  # noqa: E402
 from config import DATASET_CHOICES, TASK_CHOICES, PipelineConfig  # noqa: E402
 from data_ingestion import load_dataset  # noqa: E402
 from feature_engineering import build_features  # noqa: E402
+from gnn_training import plot_loss_curves, run_gnn_comparison  # noqa: E402
 from graph_construction import (  # noqa: E402
     build_similarity_graphs,
     compute_topology_metrics,
@@ -51,6 +53,26 @@ def cached_build_features(df: pd.DataFrame, scheme: str):
 @st.cache_data(show_spinner=False)
 def cached_build_graphs(df: pd.DataFrame, dataset: str):
     return build_similarity_graphs(df, dataset)
+
+
+@st.cache_data(show_spinner=False)
+def cached_black_hole(df: pd.DataFrame, dataset: str, best_graph_name: str, weights: tuple, threshold: float):
+    graphs = cached_build_graphs(df, dataset)
+    return apply_black_hole_sparsification(graphs[best_graph_name], df, weights, threshold)
+
+
+# Phase 5 takes ~35-40s (small dataset) but ~9 MINUTES (large dataset — two Black Hole
+# runs plus 9 full training loops: GCN + GraphSAGE + GAT, the last of which is
+# noticeably heavier per epoch due to 12-head attention). Every tab's body runs on every
+# Streamlit rerun, so without a button gate, simply moving an unrelated slider on the
+# large dataset would block the entire app for minutes. st.cache_data alone isn't enough
+# — it only helps on a *repeated* identical call, not the very first one, which would
+# still run unconditionally.
+@st.cache_data(show_spinner=False)
+def cached_gnn_comparison(df: pd.DataFrame, dataset: str, best_graph_name: str, task: str, weights: tuple):
+    graphs = cached_build_graphs(df, dataset)
+    features, _ = cached_build_features(df, "compact" if dataset == "small" else "fingerprint")
+    return run_gnn_comparison(df, features, graphs[best_graph_name], task, weights)
 
 # --- Sidebar: the root switch (dataset) + what cascades from it ---
 st.sidebar.markdown("### Pipeline configuration")
@@ -84,7 +106,8 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("**Phase progress**")
 st.sidebar.markdown(
     pill("Phase 0 done", "green") + pill("Phase 1 done", "green") + pill("Phase 2 done", "green")
-    + pill("Phase 3 done", "green") + pill("Phase 4–7 pending", "orange"),
+    + pill("Phase 3 done", "green") + pill("Phase 4 done", "green") + pill("Phase 5 done", "green")
+    + pill("Phase 6–7 pending", "orange"),
     unsafe_allow_html=True,
 )
 
@@ -111,7 +134,7 @@ with st.container(key="hero"):
     with h3:
         tile(config.task.capitalize(), "Task")
     with h4:
-        tile("4 / 7", "Phases complete")
+        tile("6 / 7", "Phases complete")
     with h5:
         n_metals = df["metal"].nunique() if df["metal"].notna().any() else "N/A"
         tile(n_metals, "Unique metals")
@@ -120,8 +143,8 @@ tabs = st.tabs([
     "1. Data & EDA ✅",
     "2. Feature Engineering ✅",
     "3. Graph Construction ✅",
-    "4. Black Hole Sparsification",
-    "5. GNN Training",
+    "4. Black Hole Sparsification ✅",
+    "5. GNN Training ✅",
     "6. Baseline Comparison",
     "7. Results Summary",
 ])
@@ -257,10 +280,10 @@ with tabs[2]:
         plot_path = plot_degree_distributions(graphs, config.dataset, output_dir="outputs")
         st.image(plot_path)
 
-# --- Tab 4: Black Hole Sparsification (placeholder, but with live-wired controls) ---
+# --- Tab 4: Black Hole Sparsification (functional) ---
 with tabs[3]:
     with st.container(key="card-placeholder-3"):
-        st.markdown(pill("Phase 4 — Black Hole Sparsification", "orange"), unsafe_allow_html=True)
+        st.markdown(pill("Phase 4 — Black Hole Sparsification", "green"), unsafe_allow_html=True)
         card_title(
             "Objective",
             "Apply gravity-based pruning (degree + betweenness + edge-weight-sum) at a configurable threshold τ.",
@@ -268,14 +291,45 @@ with tabs[3]:
         note("Confirmed 2026-07-21: gravity weights and pruning threshold are user-configurable, not fixed constants.")
 
     with st.container(key="card-gravity-weights"):
-        card_title("Gravity score weights", "How much each factor contributes to a node's importance score")
+        card_title(
+            "Gravity score weights",
+            "How much each factor contributes to a node's importance score. Default 0.33/0.33/0.33 "
+            "matches the paper's own main configuration (BlackHole.pdf, Section 2.3) — the code's "
+            "hardcoded default of 0.3/0.3/0.4 doesn't actually match what the paper reports using.",
+        )
+
+        def _weight_control(label: str, key_prefix: str, default: float) -> float:
+            """Slider + number input, kept fully independent — no auto-rebalancing between the
+            three weights. Setting one to 0.50 leaves the other two exactly where they were, so
+            you can freely fix any two values (e.g. 0.50 and 0.15) and see the third stay put too."""
+            slider_key, number_key = f"{key_prefix}_slider", f"{key_prefix}_number"
+            if slider_key not in st.session_state:
+                st.session_state[slider_key] = default
+                st.session_state[number_key] = default
+
+            def _from_slider():
+                st.session_state[number_key] = st.session_state[slider_key]
+
+            def _from_number():
+                v = max(0.0, min(1.0, st.session_state[number_key]))
+                st.session_state[number_key] = v
+                st.session_state[slider_key] = v
+
+            sc, nc = st.columns([3, 1])
+            with sc:
+                st.slider(label, 0.0, 1.0, step=0.01, key=slider_key, on_change=_from_slider)
+            with nc:
+                st.number_input(label, 0.0, 1.0, step=0.01, key=number_key, on_change=_from_number,
+                                 label_visibility="collapsed")
+            return st.session_state[slider_key]
+
         gc1, gc2, gc3 = st.columns(3)
         with gc1:
-            w_degree = st.slider("Degree centrality (α)", 0.0, 1.0, 0.3, 0.05)
+            w_degree = _weight_control("Degree centrality (α)", "gravity_alpha", 0.33)
         with gc2:
-            w_betweenness = st.slider("Betweenness centrality (β)", 0.0, 1.0, 0.3, 0.05)
+            w_betweenness = _weight_control("Betweenness centrality (β)", "gravity_beta", 0.33)
         with gc3:
-            w_edge_sum = st.slider("Edge-weight-sum (γ)", 0.0, 1.0, 0.4, 0.05)
+            w_edge_sum = _weight_control("Edge-weight-sum (γ)", "gravity_gamma", 0.33)
 
         config = PipelineConfig(
             dataset=dataset_choice,
@@ -284,24 +338,114 @@ with tabs[3]:
             gravity_betweenness_weight=w_betweenness,
             gravity_edge_weight_sum_weight=w_edge_sum,
         )
-        norm_degree, norm_betweenness, norm_edge_sum = config.gravity_weights_normalized
-        st.caption(
-            f"Normalized (used internally, always sums to 1): "
-            f"α={norm_degree:.2f} · β={norm_betweenness:.2f} · γ={norm_edge_sum:.2f}"
-        )
+        raw_sum = w_degree + w_betweenness + w_edge_sum
+        norm_a, norm_b, norm_g = config.gravity_weights_normalized
+        if abs(raw_sum - 1.0) < 0.005:
+            st.caption(f"α={w_degree:.2f} + β={w_betweenness:.2f} + γ={w_edge_sum:.2f} = {raw_sum:.2f} ✓")
+        else:
+            st.caption(
+                f"α={w_degree:.2f} + β={w_betweenness:.2f} + γ={w_edge_sum:.2f} = {raw_sum:.2f} — "
+                f"doesn't need to be exactly 1, it's normalized before use: "
+                f"α={norm_a:.2f} · β={norm_b:.2f} · γ={norm_g:.2f}"
+            )
 
     with st.container(key="card-pruning-threshold"):
         card_title("Pruning threshold (τ)", "Fraction of nodes removed per community")
         tau = st.slider("τ", 0.0, 0.9, 0.3, 0.05)
         config.pruning_threshold = tau
         st.caption("Originally planned reference points: τ=0.3 (BH-30) and τ=0.5 (BH-50) — now freely adjustable.")
-        note("These controls are fully wired and validated (see src/config.py), but don't yet affect real output — Phase 3 (graph construction) must exist before gravity scores can be computed over an actual graph.")
+
+    with st.container(key="card-bh-results"):
+        card_title("Sparsification result", f"Applied to Phase 3's selected graph ({best}) at the settings above")
+        with st.spinner("Running gravity computation + pruning..."):
+            bh_result = cached_black_hole(
+                df, config.dataset, best,
+                config.gravity_weights_normalized, config.pruning_threshold,
+            )
+        m = bh_result["metrics"]
+
+        bc1, bc2, bc3, bc4 = st.columns(4)
+        with bc1:
+            tile(f"{m['nodes_after']:,} / {m['nodes_before']:,}", f"Nodes retained ({m['node_retention_pct']}%)")
+        with bc2:
+            tile(f"{m['edges_after']:,} / {m['edges_before']:,}", f"Edges retained ({m['edge_retention_pct']}%)")
+        with bc3:
+            tile(m["isolated_nodes_after"], "Isolated nodes after pruning")
+        with bc4:
+            tile(m["num_fixed_test_nodes"], "Fixed test nodes (always kept)")
+        st.markdown("")
+
+        bc5, bc6, bc7 = st.columns(3)
+        with bc5:
+            tile(f"{m['density_before']:.5f} → {m['density_after']:.5f}", "Graph density")
+        with bc6:
+            tile(m["num_communities"], "Louvain communities")
+        with bc7:
+            tile(f"{m['elapsed_seconds']}s", "Computation time")
+
+        note(
+            f"Peak memory during this run: {m['peak_memory_mb']:.0f} MB. This is a whole-process RSS snapshot "
+            f"(includes PyTorch, RDKit, everything already loaded), not an isolated measurement of just this "
+            f"step — <strong>not directly comparable</strong> to the ~114 MB the Black Hole paper reports for "
+            f"its own 50%-pruning run, which was measured differently.",
+            "warning",
+        )
+        note(
+            "Isolated nodes above are a natural consequence of the original algorithm: it guarantees fixed "
+            "test nodes keep at least one edge, but not every retained non-test node — a node can survive "
+            "pruning and still lose all its edges if its neighbors were pruned. Not a bug, just how the "
+            "reference algorithm works."
+        )
+
+# --- Tab 5: GNN Training (functional, but button-gated — see cached_gnn_comparison above) ---
+with tabs[4]:
+    with st.container(key="card-gnn-objective"):
+        st.markdown(pill("Phase 5 — GNN Training", "green"), unsafe_allow_html=True)
+        card_title(
+            "Objective",
+            "Train GCN, GraphSAGE, and GAT on the Phase-3 best graph, BH-30 (τ=0.3), and BH-50 (τ=0.5) — 9 runs total.",
+        )
+        note(
+            "<strong>Real bug found and fixed:</strong> the reference code's <code>train()</code> sets "
+            "<code>val_mask = data.test_mask</code> — early stopping is driven by the same set used for "
+            "final evaluation, which is test-set leakage. Fixed with a genuine 3-way split: Phase 4's fixed "
+            "test nodes stay untouched until final evaluation; a separate validation split (carved out of "
+            "the remaining nodes) drives early stopping instead.",
+            "warning",
+        )
+        est_time = "~35-40s" if config.dataset == "small" else "~9 minutes"
+        run_clicked = st.button(f"Run GNN training comparison ({est_time})", key="run_gnn")
+
+    result_key = (config.dataset, best, config.task, config.gravity_weights_normalized)
+    if run_clicked:
+        with st.spinner(f"Training GCN + GraphSAGE on 3 graph variants ({est_time})..."):
+            st.session_state["gnn_results"] = cached_gnn_comparison(
+                df, config.dataset, best, config.task, config.gravity_weights_normalized
+            )
+            st.session_state["gnn_results_key"] = result_key
+
+    if st.session_state.get("gnn_results_key") == result_key:
+        gnn_results = st.session_state["gnn_results"]
+
+        with st.container(key="card-gnn-table"):
+            card_title("Results comparison")
+            rows = []
+            for (variant, model_name), r in gnn_results.items():
+                row = {"Graph variant": variant, "Model": model_name}
+                row.update(r["metrics"] if config.task == "regression" else
+                            {k: v for k, v in r["metrics"].items() if k != "confusion_matrix"})
+                rows.append(row)
+            st.dataframe(pd.DataFrame(rows), width="stretch")
+
+        with st.container(key="card-gnn-loss"):
+            card_title("Training / validation loss curves")
+            plot_path = plot_loss_curves(gnn_results, config.dataset, output_dir="outputs")
+            st.image(plot_path)
+    else:
+        note("Click the button above to run this phase — results aren't recomputed automatically since training takes real time.")
 
 # --- Placeholder tabs for phases not yet implemented, with real phase context ---
 placeholder_content = {
-    4: ("Phase 5 — GNN Training", "orange",
-        "Train 2-layer GCN and GraphSAGE on the full graph, BH-30, and BH-50 variants.",
-        ["Not yet implemented"]),
     5: ("Phase 6 — Baseline Comparison", "orange",
         "Train Random Forest and k-NN classifier on the flat feature matrix as non-graph baselines.",
         ["Not yet implemented"]),

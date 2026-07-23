@@ -1,0 +1,15 @@
+{
+  "nodes_before": 14296,
+  "edges_before": 33084,
+  "nodes_after": 6887,
+  "edges_after": 6121,
+  "node_retention_pct": 48.17,
+  "edge_retention_pct": 18.5,
+  "isolated_nodes_after": 1716,
+  "density_before": 0.00032377947059649055,
+  "density_after": 0.0002581399810331849,
+  "num_communities": 410,
+  "num_fixed_test_nodes": 664,
+  "peak_memory_mb": 1747.95,
+  "elapsed_seconds": 4.11
+}

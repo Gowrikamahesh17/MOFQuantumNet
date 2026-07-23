@@ -30,11 +30,16 @@ class PipelineConfig:
 
     # Black Hole gravity score = degree_weight * norm_degree + betweenness_weight * norm_betweenness
     #                            + edge_weight_sum_weight * norm_edge_weight_sum
-    # Defaults match bh_sparsification.py's own code default (0.3, 0.3, 0.4), not the Expose's
-    # stated 0.33/0.33/0.33 — now moot since these are user-adjustable rather than fixed.
-    gravity_degree_weight: float = 0.3
-    gravity_betweenness_weight: float = 0.3
-    gravity_edge_weight_sum_weight: float = 0.4
+    # Default resolved 2026-07-24 by reading the actual paper (BlackHole.pdf, Section 2.3, p.7):
+    # "we assign equal weights to all three components" (0.33/0.33/0.33) is the paper's main,
+    # justified configuration — an ablation there found single-component emphasis (e.g. 0.7/0.2/0.1)
+    # gave marginal gains for specific models but was unstable across sparsification levels, while
+    # equal weighting was "consistently stable and competitive... across GAT, GCN, and GraphSAGE".
+    # The bh_sparsification.py code's own hardcoded default (0.3/0.3/0.4) does NOT match this —
+    # the paper wins as the authoritative source. Freely adjustable in the UI either way.
+    gravity_degree_weight: float = 0.33
+    gravity_betweenness_weight: float = 0.33
+    gravity_edge_weight_sum_weight: float = 0.33
 
     # Black Hole pruning threshold (fraction of nodes/edges removed per community)
     pruning_threshold: float = 0.3
@@ -64,8 +69,11 @@ class PipelineConfig:
 
     @property
     def gravity_weights_normalized(self) -> tuple[float, float, float]:
-        """The three gravity weight sliders don't need to sum to 1 in the UI — normalize here
-        so the underlying gravity score is always a proper weighted average."""
+        """The UI (app.py) deliberately keeps the three weight controls fully independent —
+        no auto-rebalancing between them, so the user can freely fix any two values (e.g.
+        0.50 and 0.15) without the third snapping unpredictably. This normalizes whatever
+        raw values are set so the gravity score is always a proper weighted average
+        regardless of what they happen to sum to."""
         raw = (self.gravity_degree_weight, self.gravity_betweenness_weight, self.gravity_edge_weight_sum_weight)
         total = sum(raw)
         if total == 0:
