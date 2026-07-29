@@ -39,9 +39,14 @@ _MORGAN_GENERATOR = rdFingerprintGenerator.GetMorganGenerator(radius=MORGAN_RADI
 
 
 def _mol_or_none(smiles: str):
+    """Found via torture testing: RDKit's MolFromSmiles("") returns a *valid*, non-None
+    Mol object with zero atoms rather than None -- an empty string would otherwise
+    silently pass through as "valid" with MolWt=0.0, a physically meaningless value for
+    a linker. Treated as invalid here, same as an unparseable string."""
     mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
+    if mol is None or mol.GetNumAtoms() == 0:
         logger.warning(f"Invalid SMILES could not be parsed: {smiles!r}")
+        return None
     return mol
 
 
@@ -54,7 +59,13 @@ def _morgan_fingerprint(smiles: str) -> np.ndarray:
 
 def compute_fingerprint_matrix(smiles_series: pd.Series) -> np.ndarray:
     """Public, reusable helper — also used by Phase 3 (graph construction) for
-    linker similarity, independent of which node-feature scheme (Phase 2) is active."""
+    linker similarity, independent of which node-feature scheme (Phase 2) is active.
+
+    Found via torture testing: an empty input Series used to crash with
+    "need at least one array to stack" -- a real risk (e.g. an empty/over-filtered
+    dataframe), not just a contrived case."""
+    if len(smiles_series) == 0:
+        return np.zeros((0, MORGAN_N_BITS), dtype=np.float32)
     return np.stack(smiles_series.apply(_morgan_fingerprint).values).astype(np.float32)
 
 
