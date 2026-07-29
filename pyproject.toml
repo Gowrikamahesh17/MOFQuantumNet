@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "slow: real training / real datasets — excluded from the default fast run",
+    "acceptance: end-to-end acceptance tests against documented requirements",
+    "property: hypothesis-based property tests",
+    "torture: extreme/edge-case stress tests",
+]
+
+[tool.coverage.run]
+source = ["src"]
