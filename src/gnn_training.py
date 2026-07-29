@@ -25,7 +25,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from networkx.algorithms.community import louvain_communities
-from sklearn.metrics import confusion_matrix, cohen_kappa_score, mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import confusion_matrix, cohen_kappa_score, f1_score, mean_absolute_error, mean_squared_error, r2_score
 from torch_geometric.data import Data
 from torch_geometric.nn import GATConv, GCNConv
 
@@ -204,6 +204,7 @@ def evaluate_model(model: nn.Module, data: Data, task: str) -> dict:
             y_pred = pred[test_mask].cpu().numpy()
             return {
                 "accuracy": float((y_pred == y_true).mean()),
+                "macro_f1": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
                 "confusion_matrix": confusion_matrix(y_true, y_pred, labels=range(len(CATEGORY_ORDER))).tolist(),
                 "cohen_kappa": float(cohen_kappa_score(y_true, y_pred)),
             }

@@ -11,3 +11,8 @@ psutil
 tqdm
 matplotlib
 streamlit
+playwright
+pytest
+pytest-cov
+hypothesis
+mutmut

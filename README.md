@@ -16,7 +16,8 @@ Development is organized into 7 phases, tracked in [planning/DEVELOPMENT_TODO.md
 - ✅ **Phase 3 — Graph construction**: fixed-threshold (φ=0.9) vs. k-NN (k=3,5,10), vectorized for both dataset sizes (~10s for 14,296 nodes). `src/graph_construction.py`.
 - ✅ **Phase 4 — Black Hole sparsification**: gravity-based pruning, fully wired to live UI sliders (weights + threshold). `src/black_hole_sparsification.py`.
 - ✅ **Phase 5 — GNN training**: GCN, GraphSAGE, and GAT trained on the full graph, BH-30, and BH-50 (9 runs). Found and fixed a test-set leakage bug in the reference training loop. `src/gnn_training.py`.
-- ⬜ Phases 6–7 (baseline comparison, reporting) — not yet started.
+- ✅ **Phase 6 — Baseline comparison**: Random Forest and k-NN on the flat feature matrix, evaluated on the identical fixed test set as the GNNs. `src/baseline_models.py`.
+- 🟡 **Phase 7 — Analysis & reporting**: written report done ([planning/CASE_STUDY_REPORT.md](planning/CASE_STUDY_REPORT.md)); notebook consolidation and a results slide deck deliberately deferred pending explicit request. `src/phase7_analysis.py`.
 
 Full phase-by-phase breakdown, objectives, dependencies, and a running log of every finding/decision: [planning/DEVELOPMENT_TODO.md](planning/DEVELOPMENT_TODO.md).
 Meeting prep and presentation materials: [planning/MEETING_PREP.md](planning/MEETING_PREP.md).
@@ -55,7 +56,9 @@ Each phase can be run standalone as a script, or explored interactively.
 .venv/bin/python src/feature_engineering.py        # Phase 2: builds + saves feature matrices to data/processed/
 .venv/bin/python src/graph_construction.py         # Phase 3: builds all 4 graphs, saves edge lists + topology table
 .venv/bin/python src/black_hole_sparsification.py  # Phase 4: sparsifies the best graph at tau=0.3 and tau=0.5
-.venv/bin/python src/gnn_training.py                # Phase 5: trains GCN/GraphSAGE/GAT on all 3 graph variants
+.venv/bin/python src/gnn_training.py               # Phase 5: trains GCN/GraphSAGE/GAT on all 3 graph variants
+.venv/bin/python src/baseline_models.py             # Phase 6: RF + k-NN baselines + master comparison table
+.venv/bin/python src/phase7_analysis.py             # Phase 7: tests whether Phase 3's graph pick is also best for accuracy
 ```
 
 ### Interactive control panel
@@ -64,7 +67,7 @@ Each phase can be run standalone as a script, or explored interactively.
 .venv/bin/streamlit run app.py
 ```
 
-A dark, tabbed control panel — one tab per phase. The sidebar lets you switch dataset (small/large) and, for the large dataset, task (classification/regression); everything cascades from there. Tabs 1–4 (Data & EDA, Feature Engineering, Graph Construction, Black Hole Sparsification) run live on every interaction; Tab 5 (GNN Training) is button-gated instead — training takes ~35-40s (small dataset) to ~9 minutes (large dataset), and since every tab's body runs on every Streamlit rerun, it would otherwise block the entire app on any unrelated slider tweak. The rest are marked "not yet implemented" so the app never overstates what's done.
+A dark, tabbed control panel — one tab per phase, all 7 now functional. The sidebar lets you switch dataset (small/large) and, for the large dataset, task (classification/regression); everything cascades from there. Tabs 1–4 and 6–7 run live on every interaction; Tab 5 (GNN Training) is button-gated instead — training takes ~35-40s (small dataset) to ~9 minutes (large dataset), and since every tab's body runs on every Streamlit rerun, it would otherwise block the entire app on any unrelated slider tweak.
 
 To verify UI changes visually (Streamlit renders client-side, so `curl` only returns an empty shell): `.claude/skills/developing-with-streamlit/capture_screenshots.py` launches the app headlessly with Playwright and screenshots every tab — see that skill's `SKILL.md` for details, including several Streamlit/Playwright gotchas discovered along the way.
 
@@ -81,6 +84,8 @@ src/
   graph_construction.py          Phase 3: threshold vs. k-NN graph construction + topology metrics
   black_hole_sparsification.py   Phase 4: gravity scoring + PLD-stratified node/edge pruning
   gnn_training.py                Phase 5: GCN / GraphSAGE / GAT + train/eval with a proper 3-way split
+  baseline_models.py             Phase 6: Random Forest / k-NN baselines + master comparison table
+  phase7_analysis.py             Phase 7: graph-construction connectivity-vs-accuracy trade-off analysis
   ui_theme.py                    Dark "glassmorphism" theme + reusable Streamlit components
   logging_setup.py               Shared logging configuration
 data/
@@ -90,6 +95,7 @@ outputs/                         Generated plots, logs, UI screenshots
 planning/
   DEVELOPMENT_TODO.md            Phase-by-phase dev checklist, findings, and decisions log
   MEETING_PREP.md                Professor meeting prep: open questions + slide-deck prompts
+  CASE_STUDY_REPORT.md           Final written report — background, methodology, results, discussion, thesis extension
 .claude/skills/
   developing-with-streamlit/     Streamlit best-practices skill, incl. headless screenshot verification
 reference_content/               Professor's reference papers/code (gitignored, not part of this repo's own codebase)
@@ -113,3 +119,5 @@ Two usable datasets were found in the reference material (contrary to the BlackH
 - **k-NN vs. fixed threshold**: reproduces the original paper's own noted limitation directly — the φ=0.9 threshold leaves 20.5% (small) / 11.3% (large) of nodes isolated, while every k-NN configuration guarantees 0% isolated nodes by construction.
 - **Non-reproducible fallback**: the reference code's invalid-SMILES handling uses unseeded random noise; replaced with a deterministic zero vector.
 - **Our accuracy is lower than the paper's reported 0.783 — deliberately, not a regression**: removing the two leakage bugs above makes the task genuinely harder. We also evaluate on the full test set (the paper restricts evaluation to each graph's largest connected component) and run once instead of the paper's 10-run average. All differences are documented in `DEVELOPMENT_TODO.md`.
+- **Topology-only graph selection doesn't always pick the best-*performing* graph**: Phase 3 picks a graph by connectivity/modularity alone. Phase 7 checked this against actual downstream accuracy — correct on the small dataset, but on the large dataset `knn_5`/`knn_10` both beat the selected `knn_3`, reproduced across two runs.
+- **The most important finding of the whole case study**: non-graph baselines (Random Forest, k-NN) decisively beat every GNN configuration, on both tasks, on both datasets — most starkly, Random Forest reaches R²=0.89 on regression vs. the best GNN's R²=0.23. Likely cause: the graph is built from the same linker/metal similarity already encoded in the node features, so message passing mostly re-derives information the model already has. Full reasoning in `planning/CASE_STUDY_REPORT.md`.

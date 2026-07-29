@@ -21,6 +21,7 @@ import streamlit as st
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
+from baseline_models import build_master_comparison_table, run_baseline_comparison  # noqa: E402
 from black_hole_sparsification import apply_black_hole_sparsification  # noqa: E402
 from config import DATASET_CHOICES, TASK_CHOICES, PipelineConfig  # noqa: E402
 from data_ingestion import load_dataset  # noqa: E402
@@ -74,6 +75,16 @@ def cached_gnn_comparison(df: pd.DataFrame, dataset: str, best_graph_name: str, 
     features, _ = cached_build_features(df, "compact" if dataset == "small" else "fingerprint")
     return run_gnn_comparison(df, features, graphs[best_graph_name], task, weights)
 
+
+# Phase 6 is fast (~2s incremental, on top of already-cached features/graph/BH) —
+# no button gate needed, unlike Phase 5.
+@st.cache_data(show_spinner=False)
+def cached_baseline_comparison(df: pd.DataFrame, dataset: str, best_graph_name: str, task: str, weights: tuple):
+    graphs = cached_build_graphs(df, dataset)
+    features, _ = cached_build_features(df, "compact" if dataset == "small" else "fingerprint")
+    bh_result = cached_black_hole(df, dataset, best_graph_name, weights, 0.3)
+    return run_baseline_comparison(df, features, task, bh_result["fixed_test_nodes"])
+
 # --- Sidebar: the root switch (dataset) + what cascades from it ---
 st.sidebar.markdown("### Pipeline configuration")
 dataset_choice = st.sidebar.radio(
@@ -107,7 +118,7 @@ st.sidebar.markdown("**Phase progress**")
 st.sidebar.markdown(
     pill("Phase 0 done", "green") + pill("Phase 1 done", "green") + pill("Phase 2 done", "green")
     + pill("Phase 3 done", "green") + pill("Phase 4 done", "green") + pill("Phase 5 done", "green")
-    + pill("Phase 6–7 pending", "orange"),
+    + pill("Phase 6 done", "green") + pill("Phase 7 mostly done", "orange"),
     unsafe_allow_html=True,
 )
 
@@ -134,7 +145,7 @@ with st.container(key="hero"):
     with h3:
         tile(config.task.capitalize(), "Task")
     with h4:
-        tile("6 / 7", "Phases complete")
+        tile("6.5 / 7", "Phases complete")
     with h5:
         n_metals = df["metal"].nunique() if df["metal"].notna().any() else "N/A"
         tile(n_metals, "Unique metals")
@@ -145,8 +156,8 @@ tabs = st.tabs([
     "3. Graph Construction ✅",
     "4. Black Hole Sparsification ✅",
     "5. GNN Training ✅",
-    "6. Baseline Comparison",
-    "7. Results Summary",
+    "6. Baseline Comparison ✅",
+    "7. Results Summary ✅",
 ])
 
 # --- Tab 1: Data & EDA (functional) ---
@@ -444,19 +455,101 @@ with tabs[4]:
     else:
         note("Click the button above to run this phase — results aren't recomputed automatically since training takes real time.")
 
-# --- Placeholder tabs for phases not yet implemented, with real phase context ---
-placeholder_content = {
-    5: ("Phase 6 — Baseline Comparison", "orange",
-        "Train Random Forest and k-NN classifier on the flat feature matrix as non-graph baselines.",
-        ["Not yet implemented"]),
-    6: ("Phase 7 — Results Summary", "orange",
-        "Final comparison table, report, slide deck, and thesis-extension outline.",
-        ["Not yet implemented"]),
-}
-for idx, (title, badge, objective, notes) in placeholder_content.items():
-    with tabs[idx]:
-        with st.container(key=f"card-placeholder-{idx}"):
-            st.markdown(pill(title, badge), unsafe_allow_html=True)
-            card_title("Objective", objective)
-            for n in notes:
-                note(n)
+# --- Tab 6: Baseline Comparison (functional) ---
+with tabs[5]:
+    with st.container(key="card-baseline-objective"):
+        st.markdown(pill("Phase 6 — Baseline Comparison", "green"), unsafe_allow_html=True)
+        card_title(
+            "Objective",
+            "Train Random Forest and k-NN on the flat feature matrix — no graph structure at all — "
+            "evaluated on the exact same fixed test nodes as the GNNs, for a genuine apples-to-apples comparison.",
+        )
+        with st.spinner("Training baselines..."):
+            baseline_results = cached_baseline_comparison(df, config.dataset, best, config.task, config.gravity_weights_normalized)
+
+        cols = st.columns(len(baseline_results))
+        for col, (name, r) in zip(cols, baseline_results.items()):
+            with col:
+                m = r["metrics"]
+                if config.task == "classification":
+                    tile(f"{m['accuracy']:.3f}", f"{name} — accuracy (κ={m['cohen_kappa']:.2f})")
+                else:
+                    tile(f"R²={m['r2']:.3f}", f"{name} — MAE={m['mae']:.2f}, RMSE={m['rmse']:.2f}")
+
+    with st.container(key="card-baseline-master-table"):
+        card_title("Master comparison — GNNs vs. baselines")
+        gnn_key = (config.dataset, best, config.task, config.gravity_weights_normalized)
+        if st.session_state.get("gnn_results_key") == gnn_key:
+            master_table = build_master_comparison_table(st.session_state["gnn_results"], baseline_results, config.task)
+            st.dataframe(master_table, width="stretch")
+
+            top_config = master_table.iloc[0]["Configuration"]
+            top_type = master_table.iloc[0]["Type"]
+            if top_type == "Baseline":
+                note(
+                    f"<strong>The best result here is a non-graph baseline</strong> ({top_config}), not a GNN. "
+                    f"Consistent across both classification and regression on the large dataset: Random Forest "
+                    f"reaches R²=0.89 (MAE=0.53 Å) vs. the GNNs' best of R²=0.23 (MAE=1.64 Å). Likely explanation: "
+                    f"the 2 pore-geometry features (Largest Cavity Diameter, Largest Free Sphere) are strongly "
+                    f"correlated with the PLD target, and tree ensembles exploit that directly — while the graph "
+                    f"is built from the *same* linker/metal similarity already encoded in the node features, so "
+                    f"message passing mostly re-derives information the model already has rather than adding new "
+                    f"signal. A real, honest finding, not a bug — and a natural thesis-extension question (would "
+                    f"a graph built from information *not* already in the node features let GNNs add value?).",
+                    "warning",
+                )
+            else:
+                note(f"Best result: {top_config} ({top_type}).")
+        else:
+            note("Run Phase 5 (GNN Training tab) first to see the full master comparison table including GNN results — showing baselines only for now.")
+            baseline_only_table = build_master_comparison_table({}, baseline_results, config.task)
+            st.dataframe(baseline_only_table, width="stretch")
+
+# --- Tab 7: Results Summary (analysis done; notebook consolidation + slide deck deferred by choice) ---
+with tabs[6]:
+    with st.container(key="card-summary-objective"):
+        st.markdown(pill("Phase 7 — Analysis & Reporting", "green"), unsafe_allow_html=True)
+        card_title("Objective", "Final comparison table, written report, and thesis-extension outline.")
+        note(
+            "Full report (background, methodology, results, discussion, limitations, thesis-extension "
+            "directions): <code>planning/CASE_STUDY_REPORT.md</code>. Every number in it is cited from "
+            "saved artifacts in <code>data/processed/</code>, not re-derived from memory."
+        )
+
+    with st.container(key="card-summary-tradeoff"):
+        card_title(
+            "Key finding 1 — topology-only graph selection doesn't always pick the best-performing graph",
+            "Phase 3 selected knn_3 by connectivity/modularity alone. Phase 7 tested downstream accuracy for all 4 candidates.",
+        )
+        note(
+            "On the small dataset, knn_3 genuinely is best. On the <strong>large dataset, knn_5 and knn_10 "
+            "both beat it</strong> on accuracy and Cohen's κ — reproduced across two separate runs. "
+            "See <code>data/processed/phase7_graph_tradeoff_*.csv</code>."
+        )
+
+    with st.container(key="card-summary-baseline"):
+        card_title(
+            "Key finding 2 — non-graph baselines beat every GNN configuration",
+            "The single most important result of this case study.",
+        )
+        note(
+            "Random Forest reaches <strong>R²=0.89 (MAE=0.53 Å)</strong> on regression vs. the best GNN's "
+            "R²=0.23 (MAE=1.64 Å) — and leads on classification accuracy too, on both datasets. Likely cause: "
+            "the graph is built from the same linker/metal similarity already present in the node features, "
+            "so message passing mostly re-derives information the model already has. See Phase 6 tab and "
+            "<code>planning/CASE_STUDY_REPORT.md</code> Section 4.4 for the full reasoning.",
+            "warning",
+        )
+
+    with st.container(key="card-summary-deferred"):
+        card_title("Deliberately deferred, not forgotten")
+        note(
+            "<strong>Notebook consolidation</strong> — the pipeline has been script-based throughout "
+            "(no Jupyter dependency added). Consolidating into one notebook is a separate scope decision "
+            "(adds jupyter/nbformat to requirements) left for explicit request."
+        )
+        note(
+            "<strong>Final results slide deck</strong> — <code>planning/MEETING_PREP.md</code> already "
+            "established a detailed-prompt format for the kickoff deck; a results-deck in the same style "
+            "is a natural next step, held off pending confirmation a second presentation is wanted."
+        )
