@@ -74,7 +74,11 @@ def build_similarity_graphs(df: pd.DataFrame, dataset: str) -> dict[str, nx.Grap
     fingerprints = compute_fingerprint_matrix(df["linker_smiles"])
     fp_row_sums = fingerprints.sum(axis=1)
     metal_sim_block_fn = _metal_similarity_fn(df, dataset)
-    max_k = max(KNN_VALUES)
+    # Found via torture testing: np.argpartition requires kth < n, so a dataset smaller
+    # than max(KNN_VALUES) + 1 rows would crash with a cryptic "kth out of bounds" error.
+    # Clamp to what's actually available -- a tiny dataset just gets fewer neighbors per
+    # node than requested (min(k, n-1)), not a crash.
+    max_k = min(max(KNN_VALUES), max(0, n - 1))
 
     threshold_edges: list[tuple[int, int, float]] = []
     knn_candidates: dict[int, list[list[tuple[int, float]]]] = {k: [[] for _ in range(n)] for k in KNN_VALUES}
