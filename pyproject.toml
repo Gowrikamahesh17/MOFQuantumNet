@@ -10,3 +10,19 @@ markers = [
 
 [tool.coverage.run]
 source = ["src"]
+
+[tool.mutmut]
+# Scoped to the fast, pure-logic modules only. GNN training (real PyTorch epochs) and
+# RDKit-heavy code are excluded: each mutant re-runs the selected test file(s), and with
+# hundreds of mutants, anything involving real training or RDKit parsing would make a
+# full run impractically slow.
+source_paths = ["src"]
+only_mutate = ["src/config.py", "src/black_hole_sparsification.py"]
+# Hypothesis property tests are deliberately excluded here: mutmut invokes pytest.main()
+# multiple times in the same process (stats collection, then a clean baseline run), which
+# trips Hypothesis's HealthCheck.differing_executors guard. The plain unit tests below
+# give equivalent (deterministic) coverage of the same two modules for mutation purposes.
+pytest_add_cli_args_test_selection = [
+    "tests/unit/test_config.py",
+    "tests/unit/test_black_hole_sparsification.py",
+]
