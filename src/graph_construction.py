@@ -25,6 +25,7 @@ in row blocks to keep memory bounded instead of ever materializing the full N x 
 import json
 import os
 import time
+from collections import deque
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -164,6 +165,34 @@ def select_best_graph(topology: pd.DataFrame) -> str:
     min_isolated = topology["isolated_node_rate"].min()
     candidates = topology[topology["isolated_node_rate"] == min_isolated]
     return candidates["modularity"].idxmax()
+
+
+def sample_subgraph_for_viz(graph: nx.Graph, max_nodes: int = 90) -> list[int]:
+    """Picks a connected, readable sample of nodes for visualization.
+
+    Full graphs (2,000-14,296 nodes) are unreadable as a node-link drawing. Starting a
+    breadth-first search from the highest-degree node (rather than a random one) biases
+    the sample toward the graph's actual community structure instead of an arbitrary,
+    possibly-sparse corner of it.
+    """
+    if graph.number_of_nodes() <= max_nodes:
+        return list(graph.nodes())
+
+    degrees = dict(graph.degree())
+    start = max(degrees, key=degrees.get)
+    sampled = [start]
+    seen = {start}
+    queue = deque([start])
+    while queue and len(sampled) < max_nodes:
+        node = queue.popleft()
+        for neighbor in sorted(graph.neighbors(node)):
+            if neighbor not in seen:
+                seen.add(neighbor)
+                sampled.append(neighbor)
+                queue.append(neighbor)
+                if len(sampled) >= max_nodes:
+                    break
+    return sampled
 
 
 def plot_degree_distributions(graphs: dict[str, nx.Graph], dataset: str, output_dir: str = "outputs") -> str:

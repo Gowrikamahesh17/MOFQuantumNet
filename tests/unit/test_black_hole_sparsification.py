@@ -249,12 +249,21 @@ class TestApplyBlackHoleSparsification:
         """Found via mutation testing: mutating louvain_communities' `seed=42` to
         `seed=None` survived — nothing at this level asserted run-to-run determinism,
         only calculate_gravity_per_community's determinism given already-fixed
-        communities. Community detection itself must also be seeded."""
+        communities. Community detection itself must also be seeded.
+
+        `elapsed_seconds` and `peak_memory_mb` are excluded from the comparison: they're
+        real wall-clock/RSS measurements that are *supposed* to vary run to run — an
+        earlier version of this test compared the full metrics dict including those two
+        keys and was consequently flaky (failed ~4/5 runs), not actually testing
+        determinism of anything meaningful."""
         graph, df = graph_and_df
         result_a = apply_black_hole_sparsification(graph, df, (0.33, 0.33, 0.33), 0.3)
         result_b = apply_black_hole_sparsification(graph, df, (0.33, 0.33, 0.33), 0.3)
         assert result_a["fixed_test_nodes"] == result_b["fixed_test_nodes"]
-        assert result_a["metrics"] == result_b["metrics"]
+        non_deterministic_keys = {"elapsed_seconds", "peak_memory_mb"}
+        metrics_a = {k: v for k, v in result_a["metrics"].items() if k not in non_deterministic_keys}
+        metrics_b = {k: v for k, v in result_b["metrics"].items() if k not in non_deterministic_keys}
+        assert metrics_a == metrics_b
 
     def test_peak_memory_mb_is_a_rounded_float(self, graph_and_df):
         """Found via mutation testing: `round(peak_memory, 2)` mutated to

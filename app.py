@@ -2,20 +2,18 @@
 
 Run with: .venv/bin/streamlit run app.py
 
-Each tab maps to one development phase from planning/DEVELOPMENT_TODO.md.
-Only Phase 1 (Data & EDA) is functional so far; later tabs are placeholders
-that light up as each phase is implemented, so this app always reflects the
-pipeline's real current state rather than promising features that don't exist.
+Each tab maps to one pipeline stage from README.md's "Pipeline overview".
 
-Per the 2026-07-21 meeting with Prof. Jalali: dataset selection cascades into
-feature scheme (derived, not independently chosen) and task options (only the
-large dataset offers classification vs. regression); Black Hole's gravity
-weights and pruning threshold are configurable sliders, not fixed constants.
+Dataset selection cascades into feature scheme (derived, not independently
+chosen) and task options (only the large dataset offers classification vs.
+regression); Black Hole's gravity weights and pruning threshold are
+configurable sliders, not fixed constants.
 """
 
 import os
 import sys
 
+import networkx as nx
 import pandas as pd
 import streamlit as st
 
@@ -31,9 +29,13 @@ from graph_construction import (  # noqa: E402
     build_similarity_graphs,
     compute_topology_metrics,
     plot_degree_distributions,
+    sample_subgraph_for_viz,
     select_best_graph,
 )
+from graph_viz import render_interactive_graph  # noqa: E402
 from ui_theme import bar_row, card_title, eyebrow, inject_theme, note, pill, tile  # noqa: E402
+
+GRAPH_VIZ_MAX_NODES = 90
 
 st.set_page_config(page_title="MOFQuantumNet Pipeline", layout="wide", page_icon="🕸️")
 inject_theme()
@@ -60,6 +62,21 @@ def cached_build_graphs(df: pd.DataFrame, dataset: str):
 def cached_black_hole(df: pd.DataFrame, dataset: str, best_graph_name: str, weights: tuple, threshold: float):
     graphs = cached_build_graphs(df, dataset)
     return apply_black_hole_sparsification(graphs[best_graph_name], df, weights, threshold)
+
+
+# A readable node-link drawing needs a small, connected sample, not the full graph
+# (2,000-14,296 nodes). Layout is computed once on that sample and cached so the
+# "before" (Tab 3) and "after" (Tab 4) interactive views land on identical
+# coordinates -- a node that disappears after pruning visibly vanishes from the
+# same spot rather than the whole picture re-shuffling.
+@st.cache_data(show_spinner=False)
+def cached_graph_sample_layout(df: pd.DataFrame, dataset: str, best_graph_name: str, max_nodes: int = GRAPH_VIZ_MAX_NODES):
+    graphs = cached_build_graphs(df, dataset)
+    graph = graphs[best_graph_name]
+    node_ids = sample_subgraph_for_viz(graph, max_nodes=max_nodes)
+    sub = graph.subgraph(node_ids)
+    pos = nx.spring_layout(sub, seed=42, weight="weight")
+    return node_ids, pos
 
 
 # Phase 5 takes ~35-40s (small dataset) but ~9 MINUTES (large dataset — two Black Hole
@@ -91,7 +108,7 @@ dataset_choice = st.sidebar.radio(
     "Dataset",
     DATASET_CHOICES,
     format_func=lambda d: "Small — 2,000 MOF (MOFGalaxyNet)" if d == "small" else "Large — 14,296 MOF (BlackHole/MOFCSD)",
-    help="Confirmed with Prof. Jalali 2026-07-21: both datasets stay in scope, configurable — this is the one root switch everything else cascades from.",
+    help="Both datasets stay in scope — this is the one root switch everything else cascades from.",
 )
 
 feature_scheme = "compact" if dataset_choice == "small" else "fingerprint"
@@ -111,16 +128,6 @@ st.sidebar.caption(
 )
 
 config = PipelineConfig(dataset=dataset_choice, task=task_choice)
-st.sidebar.caption("Switching here only affects tabs marked ✅ — later phases pick this up as they're built.")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("**Phase progress**")
-st.sidebar.markdown(
-    pill("Phase 0 done", "green") + pill("Phase 1 done", "green") + pill("Phase 2 done", "green")
-    + pill("Phase 3 done", "green") + pill("Phase 4 done", "green") + pill("Phase 5 done", "green")
-    + pill("Phase 6 done", "green") + pill("Phase 7 mostly done", "orange"),
-    unsafe_allow_html=True,
-)
 
 # --- Hero ---
 with st.container(key="hero"):
@@ -291,6 +298,24 @@ with tabs[2]:
         plot_path = plot_degree_distributions(graphs, config.dataset, output_dir="outputs")
         st.image(plot_path)
 
+    with st.container(key="card-graph-interactive"):
+        card_title(
+            "Interactive graph view",
+            f"A readable, connected sample of the selected graph ({best}) — drag nodes, scroll to zoom, drag the "
+            "background to pan, hover a node for its refcode/category. Too many nodes to draw all "
+            f"{graphs[best].number_of_nodes():,} at once, so this is a {GRAPH_VIZ_MAX_NODES}-node neighborhood sample.",
+        )
+        sample_node_ids, sample_pos = cached_graph_sample_layout(df, config.dataset, best)
+        render_interactive_graph(
+            graphs[best],
+            sample_node_ids,
+            sample_pos,
+            df["refcode"].values,
+            df["pld_category"].values,
+            key=f"graph-viz-before-{config.dataset}-{best}",
+            subtitle=f"{len(sample_node_ids)} nodes sampled from {graphs[best].number_of_nodes():,} total",
+        )
+
 # --- Tab 4: Black Hole Sparsification (functional) ---
 with tabs[3]:
     with st.container(key="card-placeholder-3"):
@@ -299,7 +324,7 @@ with tabs[3]:
             "Objective",
             "Apply gravity-based pruning (degree + betweenness + edge-weight-sum) at a configurable threshold τ.",
         )
-        note("Confirmed 2026-07-21: gravity weights and pruning threshold are user-configurable, not fixed constants.")
+        note("Gravity weights and pruning threshold are user-configurable, not fixed constants.")
 
     with st.container(key="card-gravity-weights"):
         card_title(
@@ -408,6 +433,40 @@ with tabs[3]:
             "reference algorithm works."
         )
 
+    with st.container(key="card-bh-graph-compare"):
+        card_title(
+            "Before vs. after pruning",
+            "Same node-sample, same layout, both sides — a node's position doesn't move between the two; "
+            "it either survives or disappears.",
+        )
+        sample_node_ids, sample_pos = cached_graph_sample_layout(df, config.dataset, best)
+        gc1, gc2 = st.columns(2)
+        with gc1:
+            st.markdown("**Before pruning**")
+            render_interactive_graph(
+                graphs[best],
+                sample_node_ids,
+                sample_pos,
+                df["refcode"].values,
+                df["pld_category"].values,
+                key=f"graph-viz-bh-before-{config.dataset}-{best}",
+                subtitle=f"{len(sample_node_ids)} nodes",
+                height=420,
+            )
+        with gc2:
+            st.markdown(f"**After pruning (τ={tau})**")
+            after_ids = [n for n in sample_node_ids if n in bh_result["graph"].nodes()]
+            render_interactive_graph(
+                bh_result["graph"],
+                sample_node_ids,
+                sample_pos,
+                df["refcode"].values,
+                df["pld_category"].values,
+                key=f"graph-viz-bh-after-{config.dataset}-{best}-{tau}",
+                subtitle=f"{len(after_ids)} of {len(sample_node_ids)} sampled nodes survived",
+                height=420,
+            )
+
 # --- Tab 5: GNN Training (functional, but button-gated — see cached_gnn_comparison above) ---
 with tabs[4]:
     with st.container(key="card-gnn-objective"):
@@ -505,7 +564,7 @@ with tabs[5]:
             baseline_only_table = build_master_comparison_table({}, baseline_results, config.task)
             st.dataframe(baseline_only_table, width="stretch")
 
-# --- Tab 7: Results Summary (analysis done; notebook consolidation + slide deck deferred by choice) ---
+# --- Tab 7: Results Summary ---
 with tabs[6]:
     with st.container(key="card-summary-objective"):
         st.markdown(pill("Phase 7 — Analysis & Reporting", "green"), unsafe_allow_html=True)
@@ -524,7 +583,7 @@ with tabs[6]:
         note(
             "On the small dataset, knn_3 genuinely is best. On the <strong>large dataset, knn_5 and knn_10 "
             "both beat it</strong> on accuracy and Cohen's κ — reproduced across two separate runs. "
-            "See <code>data/processed/phase7_graph_tradeoff_*.csv</code>."
+            "See <code>data/processed/graph_tradeoff_*.csv</code>."
         )
 
     with st.container(key="card-summary-baseline"):
@@ -542,14 +601,13 @@ with tabs[6]:
         )
 
     with st.container(key="card-summary-deferred"):
-        card_title("Deliberately deferred, not forgotten")
+        card_title("Not yet included")
         note(
-            "<strong>Notebook consolidation</strong> — the pipeline has been script-based throughout "
-            "(no Jupyter dependency added). Consolidating into one notebook is a separate scope decision "
-            "(adds jupyter/nbformat to requirements) left for explicit request."
+            "<strong>Notebook consolidation</strong> — the pipeline is script-based throughout "
+            "(<code>src/*.py</code>, no Jupyter dependency). A single consolidated notebook covering "
+            "the full pipeline hasn't been built."
         )
         note(
-            "<strong>Final results slide deck</strong> — <code>planning/MEETING_PREP.md</code> already "
-            "established a detailed-prompt format for the kickoff deck; a results-deck in the same style "
-            "is a natural next step, held off pending confirmation a second presentation is wanted."
+            "<strong>Results slide deck</strong> — a presentation-ready summary of the results in "
+            "<code>planning/CASE_STUDY_REPORT.md</code> hasn't been built."
         )

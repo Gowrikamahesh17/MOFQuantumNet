@@ -1,12 +1,12 @@
-"""Phase 7 — Analysis: does Phase 3's topology-only graph selection actually pick the
-best graph for downstream accuracy?
+"""Does topology-only graph selection actually pick the best graph for downstream
+accuracy?
 
-Phase 3's `select_best_graph()` picks a graph using connectivity heuristics alone
-(lowest isolated-node rate, then highest modularity) — it never trains a model to
-check. This script closes that gap: trains one GCN per Phase-3 graph candidate
-(threshold, knn_3, knn_5, knn_10) and reports accuracy/kappa alongside the topology
-metrics, so the trade-off can be assessed with real downstream performance, not just
-graph structure.
+`graph_construction.py::select_best_graph()` picks a graph using connectivity
+heuristics alone (lowest isolated-node rate, then highest modularity) — it never
+trains a model to check. This script closes that gap: trains one GCN per candidate
+graph (threshold, knn_3, knn_5, knn_10) and reports accuracy/kappa alongside the
+topology metrics, so the trade-off can be assessed with real downstream performance,
+not just graph structure.
 """
 
 import os
@@ -69,7 +69,7 @@ def evaluate_graph_construction_tradeoff(dataset: str, scheme: str) -> pd.DataFr
         logger.info(f"[{dataset}] {name}: accuracy={metrics['accuracy']:.4f}, kappa={metrics['cohen_kappa']:.4f}")
 
     result = pd.DataFrame(rows).set_index("config")
-    result.to_csv(f"data/processed/phase7_graph_tradeoff_{dataset}.csv")
+    result.to_csv(f"data/processed/graph_tradeoff_{dataset}.csv")
     return result
 
 
