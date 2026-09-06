@@ -82,6 +82,7 @@ This is the primary way to use the project.
 .venv/bin/python -m webapp.backend.train_models --all   # baselines: ~5 min total, both datasets
 .venv/bin/python -m webapp.backend.train_gnns --dataset small --task classification  # ~40s
 .venv/bin/python -m webapp.backend.train_gnns --dataset large --task classification  # ~9 min
+.venv/bin/python -m webapp.backend.train_gnns --dataset large --task regression       # ~9 min
 # (large/regression GNNs optional — real minutes of compute; baselines alone work fine without them)
 
 # 2. Run the app
