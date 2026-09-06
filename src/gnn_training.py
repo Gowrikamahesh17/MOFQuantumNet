@@ -217,9 +217,15 @@ def evaluate_model(model: nn.Module, data: Data, task: str) -> dict:
         }
 
 
-def run_gnn_comparison(df, features: np.ndarray, best_graph, task: str, gravity_weights: tuple) -> dict:
-    """Trains GCN + GraphSAGE on: the Phase-3 best graph, BH-30 (tau=0.3), BH-50 (tau=0.5).
-    Returns {(variant_name, model_name): {"metrics": ..., "history": ...}}."""
+def run_gnn_comparison(df, features: np.ndarray, best_graph, task: str, gravity_weights: tuple,
+                        return_models: bool = False) -> dict:
+    """Trains GCN + GraphSAGE + GAT on: the Phase-3 best graph, BH-30 (tau=0.3), BH-50 (tau=0.5).
+    Returns {(variant_name, model_name): {"metrics": ..., "history": ...}}.
+
+    With return_models=True, each entry also carries the trained model, the PyG Data it was
+    trained on, and its dim_in/dim_h/dim_out — used by webapp/backend/gnn_store.py to persist
+    a servable model per architecture without duplicating the train/split/graph-variant logic
+    here."""
     n = len(df)
 
     if task == "classification":
@@ -255,7 +261,10 @@ def run_gnn_comparison(df, features: np.ndarray, best_graph, task: str, gravity_
             model, history = train_model(model, data, task, class_weights=class_weights)
             metrics = evaluate_model(model, data, task)
             logger.info(f"{variant_name} / {model_name}: {metrics}")
-            results[(variant_name, model_name)] = {"metrics": metrics, "history": history}
+            entry = {"metrics": metrics, "history": history}
+            if return_models:
+                entry.update({"model": model, "dim_in": features.shape[1], "dim_h": 64, "dim_out": dim_out})
+            results[(variant_name, model_name)] = entry
 
     return results
 

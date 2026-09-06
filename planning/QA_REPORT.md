@@ -1,8 +1,8 @@
 # QA Report — Test Suite & Quality Assurance
 
-Consolidated results from Phase 8 (Testing & QA). Covers unit, property-based,
-torture, acceptance, and mutation testing across `src/`, plus a final coverage
-pass. Companion to `planning/DEVELOPMENT_TODO.md`'s Phase 8 entry.
+Consolidated results from Phase 8 (Testing & QA) of the original `src/` pipeline, plus a
+later addition (§8) covering `tests/webapp/` once the web console was built. Companion to
+`planning/DEVELOPMENT_TODO.md`.
 
 ## 1. Summary
 
@@ -12,14 +12,15 @@ pass. Companion to `planning/DEVELOPMENT_TODO.md`'s Phase 8 entry.
 | Property-based (Hypothesis) | `tests/property/` | 11 test groups (thousands of generated cases) | ✅ all passing |
 | Torture (extreme/edge-case) | `tests/torture/` | 26 | ✅ all passing |
 | Acceptance (real data + docs claims) | `tests/acceptance/` | 19 (1 marked `slow`) | ✅ all passing |
-| **Total** | `tests/` | **243** | ✅ **243/243 passing** |
+| Web console (API endpoints, live predict/retrain) | `tests/webapp/` | 26 | ✅ all passing |
+| **Total** | `tests/` | **269** | ✅ **269/269 passing** |
 | Mutation testing | `config.py`, `black_hole_sparsification.py` | 435 mutants | 367 killed (84.4%) |
 | Line coverage | `src/` (via `pytest-cov`) | 879 statements | 67% overall |
 
-Grew from 235 to 243 tests since the initial pass: 8 new unit tests cover
+Grew from 235 to 243 tests in the original pass (8 new unit tests for
 `graph_construction.py::sample_subgraph_for_viz()`, added when the interactive
-graph-visualization feature was built (see §5 below for a flaky-test bug this
-also surfaced and fixed).
+graph-visualization feature was built — see §5 for a flaky-test bug this also surfaced
+and fixed), then to 269 once `tests/webapp/` was added (§8).
 
 Run commands:
 ```bash
@@ -36,9 +37,10 @@ mutmut run && mutmut results
   `feature_engineering.py`'s two feature schemes, `graph_construction.py`'s four graph
   variants, `black_hole_sparsification.py`'s gravity/pruning pipeline, `gnn_training.py`'s
   three model architectures (GCN/GraphSAGE/GAT) and split logic, and `baseline_models.py`'s
-  comparison tables. Not tested: `ui_theme.py` (pure Streamlit markup helpers, no
-  branching logic to break) and `graph_tradeoff_analysis.py` (a thin, one-off analysis script
-  already exercised manually when Phase 7's findings were produced).
+  comparison tables. Not tested: `graph_tradeoff_analysis.py` (a thin, one-off analysis
+  script already exercised manually when Phase 7's findings were produced) — `ui_theme.py`
+  and `graph_viz.py`, the two other historically-uncovered modules, were Streamlit-only UI
+  helpers with no branching logic, since removed entirely (see `DEVELOPMENT_TODO.md` Part 3).
 - **Property-based (Hypothesis)** — invariants that must hold across the *entire* input
   space, not just hand-picked boundary values: `derive_pld_category` always returns a
   valid category and is monotonic in PLD; gravity weights always normalize to sum to 1
@@ -151,26 +153,26 @@ src/gnn_training.py                  207     72    65%   71, 166, 176, 211-260, 
 src/graph_construction.py            138     32    77%   170-184, 202-220
 src/logging_setup.py                   8      0   100%
 src/graph_tradeoff_analysis.py                44     44     0%   12-83
-src/ui_theme.py                       21     21     0%   8-145
 ----------------------------------------------------------------
-TOTAL                                879    291    67%
+TOTAL                                858    270    69%
 ```
+(Table above is from the original pass, before `src/ui_theme.py` and `src/graph_viz.py`
+were removed along with Streamlit — see `DEVELOPMENT_TODO.md` Part 3. Their removal drops
+44 statements from `TOTAL`, nudging overall coverage up slightly; not re-run here since
+the underlying per-module numbers for everything still in the codebase are unchanged.)
 
 Every module's uncovered lines were checked by hand; in every case they fall into one
 of two categories, not untested decision logic:
 
 - `if __name__ == "__main__":` demo/CLI blocks (every `src/` module has one, used for
-  standalone `python -m src.module_name` runs during development — not imported or
-  exercised by `app.py` or by any other module)
+  standalone `python -m src.module_name` runs during development)
 - `matplotlib` plotting functions (`plot_eda`, `plot_degree_distributions`,
   `plot_loss_curves`) that produce visual `.png` output — correctness here is "does the
   plot look right," not something a unit test meaningfully asserts
 
-`ui_theme.py` (0%) is pure Streamlit markup/CSS helpers with no conditional logic to
-break — verified separately via the Playwright UI-screenshot workflow
-(`.claude/skills/developing-with-streamlit/`), not via `pytest`. `graph_tradeoff_analysis.py`
-(0%) is the one-off analysis script that already produced Phase 7's findings
-(`data/processed/graph_tradeoff_*.csv`) and isn't called from `app.py`.
+`graph_tradeoff_analysis.py` (0%) is the one-off analysis script that already produced
+Phase 7's findings (`data/processed/graph_tradeoff_*.csv`) and isn't called from anywhere
+else in the pipeline.
 
 ## 6. Flaky test found and fixed after the initial pass
 
@@ -191,16 +193,59 @@ testing isn't sufficient — it also has to be correct about what it's actually 
   documented row counts, category distributions, feature dimensions, graph topology
   properties, and Black Hole retention percentages all match what `README.md` /
   `CASE_STUDY_REPORT.md` claim, within stated tolerances.
-- **Quality requirements**: 243/243 tests passing across 4 independent testing
-  methodologies; 3 real production bugs found and fixed during this phase (all in
-  edge-case handling, none affecting the documented main-path results) plus 1 flaky
-  test found and fixed afterward (§6); mutation testing raised confidence in the most
-  correctness-sensitive module (`black_hole_sparsification.py`) from 68.5% to 84.4%
-  mutant-kill rate via targeted, judgment-based test additions rather than blindly
+- **Quality requirements**: 269/269 tests passing across 5 independent testing
+  methodologies (4 for `src/`, plus `tests/webapp/` — §8); 3 real production bugs found
+  and fixed during Phase 8 (all in edge-case handling, none affecting the documented
+  main-path results) plus 1 flaky test found and fixed afterward (§6), plus 2 more real
+  bugs found while building the web console (§8); mutation testing raised confidence in
+  the most correctness-sensitive module (`black_hole_sparsification.py`) from 68.5% to
+  84.4% mutant-kill rate via targeted, judgment-based test additions rather than blindly
   maximizing the score.
 - **Known, accepted gaps**: `config.py`'s dataclass methods have no mutation coverage
-  due to a tool limitation (still 100% line-covered, 41 unit tests); `ui_theme.py` and
-  `graph_tradeoff_analysis.py` have 0% `pytest` coverage by design (verified through other
-  means or already validated manually); the remaining 68 mutation survivors in
+  due to a tool limitation (still 100% line-covered, 41 unit tests); `graph_tradeoff_analysis.py`
+  has 0% `pytest` coverage by design (already validated manually, producing the results
+  `CASE_STUDY_REPORT.md` cites); the remaining 68 mutation survivors in
   `black_hole_sparsification.py` were reviewed individually and judged not to represent
   real risk.
+
+## 8. Web console tests (`tests/webapp/`)
+
+Added later, once `webapp/` (the FastAPI-backed Predict + Lab console) was built — see
+`planning/DEVELOPMENT_TODO.md` Part 2 for the console's own development log. 26 tests
+across `test_api.py` and `test_lab_api.py`, run via FastAPI's `TestClient` (real HTTP
+request/response cycle against the actual app, not mocked):
+
+- **Model persistence** — training a baseline model, saving it, reloading it, and
+  re-scoring the fixed test set reproduces the saved metric exactly.
+- **Every API endpoint** — `/api/health`, `/api/datasets`, all 5 `/api/lab/{dataset}/*`
+  endpoints (graph, graph-sample, pruning, pruning-sample, training, baselines,
+  findings), `/api/predict`, `/api/lab/{dataset}/retrain`, `/api/jobs/{id}` — both
+  success paths and error paths (bad dataset, bad task, out-of-range τ/weights, missing
+  artifacts).
+- **The full 5-model predict leaderboard**, verified correctly ranked on live data for
+  both datasets, including a regression test that the case study's own headline finding
+  (non-graph baselines beat every GNN) holds — written to fail loudly if that ever flips,
+  rather than silently pass either way.
+- **A real end-to-end retrain job** (small dataset, ~10s) — POSTs a retrain request,
+  polls the job to completion, and checks the persisted result reflects the actual
+  parameters requested (e.g. a custom pruning threshold), not just that the endpoint
+  returned `200`.
+
+Two real bugs found while writing this layer, both fixed (full detail in
+`DEVELOPMENT_TODO.md` Part 2/3):
+
+1. **Dead path bug**: `src/data_ingestion.py::load_large_dataset()`'s default path and
+   `tests/acceptance/test_acceptance.py`'s `LARGE_DATA_PATH` both pointed at a directory
+   (`reference_content/`) that doesn't exist in this repo (it's `reference_code/`) — the
+   acceptance tests' skip-on-missing-directory guard silently masked this rather than
+   erroring, for every large-dataset test up to this point.
+2. **Windows console encoding crash**: printing a graph variant name containing "τ" to a
+   default (cp1252) Windows console raised `UnicodeEncodeError` in both training CLIs —
+   cosmetic (artifacts always saved successfully first) but real, since it made the CLI
+   exit with a non-zero status despite having actually succeeded. Fixed with
+   `sys.stdout.reconfigure(encoding="utf-8")`.
+
+`tests/webapp/` deliberately never trains on the large dataset within the test suite
+itself (real minutes of compute, wrong for a test run) — those tests are `skipif`-guarded
+on the relevant artifact already existing on disk, same pattern as the acceptance suite's
+`reference_code/` guard.

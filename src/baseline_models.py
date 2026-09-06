@@ -29,8 +29,13 @@ from logging_setup import get_logger
 logger = get_logger(__name__)
 
 
-def run_baseline_comparison(df, features: np.ndarray, task: str, fixed_test_nodes: set) -> dict:
-    """Returns {"Random Forest": {...}, "k-NN": {...}}."""
+def run_baseline_comparison(df, features: np.ndarray, task: str, fixed_test_nodes: set, return_models: bool = False) -> dict:
+    """Returns {"Random Forest": {...}, "k-NN": {...}}.
+
+    With return_models=True, each entry also carries the fitted estimator under "model" —
+    used by webapp/backend/model_store.py to persist trained baselines for later inference,
+    without duplicating the train/split logic here.
+    """
     n = len(features)
     train_idx, val_idx, test_idx = make_splits(n, fixed_test_nodes)
     train_all_idx = np.concatenate([train_idx, val_idx])
@@ -73,7 +78,7 @@ def run_baseline_comparison(df, features: np.ndarray, task: str, fixed_test_node
                 "r2": float(r2_score(y_test, y_pred)),
             }
         logger.info(f"Baseline {name}: {metrics}")
-        results[name] = {"metrics": metrics}
+        results[name] = {"metrics": metrics, "model": model} if return_models else {"metrics": metrics}
 
     return results
 

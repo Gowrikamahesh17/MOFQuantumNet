@@ -69,11 +69,12 @@ class PipelineConfig:
 
     @property
     def gravity_weights_normalized(self) -> tuple[float, float, float]:
-        """The UI (app.py) deliberately keeps the three weight controls fully independent —
-        no auto-rebalancing between them, so the user can freely fix any two values (e.g.
-        0.50 and 0.15) without the third snapping unpredictably. This normalizes whatever
-        raw values are set so the gravity score is always a proper weighted average
-        regardless of what they happen to sum to."""
+        """The webapp's retrain form (webapp/backend/api.py::RetrainRequest) deliberately
+        keeps the three weight controls fully independent — no auto-rebalancing between
+        them, so the caller can freely fix any two values (e.g. 0.50 and 0.15) without the
+        third snapping unpredictably. This normalizes whatever raw values are set so the
+        gravity score is always a proper weighted average regardless of what they happen
+        to sum to."""
         raw = (self.gravity_degree_weight, self.gravity_betweenness_weight, self.gravity_edge_weight_sum_weight)
         total = sum(raw)
         if total == 0:

@@ -9,7 +9,8 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src"]
+source = ["src", "webapp"]
+omit = ["webapp/models/*"]
 
 [tool.mutmut]
 # Scoped to the fast, pure-logic modules only. GNN training (real PyTorch epochs) and

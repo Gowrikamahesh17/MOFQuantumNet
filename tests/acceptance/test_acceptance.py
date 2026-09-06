@@ -5,8 +5,9 @@ README.md / planning/DEVELOPMENT_TODO.md / planning/CASE_STUDY_REPORT.md.
 Marked `acceptance` (and the heaviest ones additionally `slow`) so the fast unit/
 property/torture suite can run on its own: `pytest -m "not slow"`.
 
-Large-dataset tests skip gracefully if reference_content/ isn't present locally (it's
-gitignored professor material, not guaranteed to exist in every checkout).
+Large-dataset tests skip gracefully if data/raw/MOFCSD.csv isn't present locally (it's
+tracked in this repo, but the skip guard is kept as a defensive fallback for a partial
+checkout rather than assumed).
 """
 
 import os
@@ -22,9 +23,9 @@ from graph_construction import KNN_VALUES, build_similarity_graphs, compute_topo
 
 pytestmark = pytest.mark.acceptance
 
-LARGE_DATA_PATH = "reference_content/BlackHole-main/MOFCSD.csv"
+LARGE_DATA_PATH = "data/raw/MOFCSD.csv"
 skip_if_no_large_data = pytest.mark.skipif(
-    not os.path.exists(LARGE_DATA_PATH), reason="reference_content/ (professor material) not present in this checkout"
+    not os.path.exists(LARGE_DATA_PATH), reason="data/raw/MOFCSD.csv not present in this checkout"
 )
 
 

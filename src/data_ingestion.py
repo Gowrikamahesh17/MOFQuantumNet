@@ -60,8 +60,14 @@ def load_small_dataset(path: str = "data/raw/SMILES_METAL_2000_NoPLD.csv") -> pd
     return df
 
 
-def load_large_dataset(path: str = "reference_content/BlackHole-main/MOFCSD.csv") -> pd.DataFrame:
-    """Load the 14,296-MOF BlackHole dataset with continuous PLD."""
+def load_large_dataset(path: str = "data/raw/MOFCSD.csv") -> pd.DataFrame:
+    """Load the 14,296-MOF BlackHole dataset with continuous PLD.
+
+    Copied into data/raw/ (this project's own tracked input data) rather than read from
+    reference_code/BlackHole-main/ — that directory is the professor's gitignored
+    reference material and isn't guaranteed to stick around, so this project's own large-
+    dataset pipeline shouldn't structurally depend on it still being present.
+    """
     df = pd.read_csv(path, index_col=0)
     logger.info(f"Loaded large dataset: {df.shape} from {path}")
 

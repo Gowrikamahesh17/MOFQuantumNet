@@ -214,12 +214,8 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Streamlit
-.streamlit/secrets.toml
-.streamlit/
-
 # Reference materials (professor's code/papers, not part of this project's own codebase)
-reference_content/
+reference_code/
 
 # Ignore agents and claude directories
 .agents/
@@ -231,3 +227,9 @@ reference_content/
 # Ignore PowerPoint files
 *.pptx
 
+# Trained model artifacts for the Predict console — regenerable via
+# `python -m webapp.backend.train_models --all`, not source of truth
+webapp/models/
+
+# Ignore streamlit files
+.streamlit/

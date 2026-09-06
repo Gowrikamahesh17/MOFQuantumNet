@@ -1,4 +1,4 @@
-playwright
+httpx
 pytest
 pytest-cov
 hypothesis
