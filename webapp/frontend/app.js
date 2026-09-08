@@ -28,6 +28,108 @@ async function apiPost(path, payload) {
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function pct(x) { return (x * 100).toFixed(1) + "%"; }
 
+const METAL_NAMES = {
+  Ag: "Silver", Al: "Aluminum", Ba: "Barium", Be: "Beryllium", Bi: "Bismuth", Ca: "Calcium",
+  Cd: "Cadmium", Ce: "Cerium", Co: "Cobalt", Cr: "Chromium", Cs: "Cesium", Cu: "Copper",
+  Dy: "Dysprosium", Er: "Erbium", Eu: "Europium", Fe: "Iron", Ga: "Gallium", Gd: "Gadolinium",
+  Hf: "Hafnium", Hg: "Mercury", Ho: "Holmium", In: "Indium", K: "Potassium", La: "Lanthanum",
+  Li: "Lithium", Lu: "Lutetium", Mg: "Magnesium", Mn: "Manganese", Mo: "Molybdenum",
+  Na: "Sodium", Nd: "Neodymium", Ni: "Nickel", Pb: "Lead", Pr: "Praseodymium", Rb: "Rubidium",
+  Ru: "Ruthenium", Sb: "Antimony", Sc: "Scandium", Sm: "Samarium", Sn: "Tin", Sr: "Strontium",
+  Tb: "Terbium", Th: "Thorium", Ti: "Titanium", Tl: "Thallium", Tm: "Thulium", U: "Uranium",
+  V: "Vanadium", W: "Tungsten", Y: "Yttrium", Yb: "Ytterbium", Zn: "Zinc", Zr: "Zirconium",
+};
+
+/* ---------- metal combobox ---------- */
+
+function initMetalCombobox() {
+  const wrap = document.getElementById("metal-combobox");
+  const input = document.getElementById("metal");
+  const list = document.getElementById("metal-combobox-list");
+  if (!wrap || !input || !list) return;
+
+  let options = [];
+  let filtered = [];
+  let activeIndex = -1;
+
+  function buildOptions() {
+    const dist = state.datasets && state.datasets.large && state.datasets.large.metal_distribution;
+    if (!dist) return [];
+    return Object.keys(dist)
+      .sort((a, b) => dist[b] - dist[a])
+      .map((sym) => ({ sym, name: METAL_NAMES[sym] || sym }));
+  }
+
+  function render() {
+    if (!filtered.length) {
+      list.innerHTML = `<div class="combobox-empty">No matching metal.</div>`;
+      return;
+    }
+    list.innerHTML = filtered
+      .map(
+        (o, i) =>
+          `<div class="combobox-option${i === activeIndex ? " active" : ""}" role="option" data-index="${i}"><span class="sym">${esc(o.sym)}</span><span class="name">${esc(o.name)}</span></div>`
+      )
+      .join("");
+  }
+
+  function open() {
+    if (!options.length) options = buildOptions();
+    const q = input.value.trim().toLowerCase();
+    filtered = q
+      ? options.filter((o) => o.sym.toLowerCase().includes(q) || o.name.toLowerCase().includes(q))
+      : options;
+    activeIndex = -1;
+    render();
+    list.hidden = false;
+  }
+
+  function close() {
+    list.hidden = true;
+    activeIndex = -1;
+  }
+
+  function select(o) {
+    input.value = o.sym;
+    close();
+  }
+
+  input.addEventListener("focus", open);
+  input.addEventListener("input", open);
+  input.addEventListener("keydown", (e) => {
+    if (list.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      open();
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (filtered.length) activeIndex = (activeIndex + 1) % filtered.length;
+      render();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (filtered.length) activeIndex = (activeIndex - 1 + filtered.length) % filtered.length;
+      render();
+    } else if (e.key === "Enter") {
+      if (!list.hidden && activeIndex >= 0 && filtered[activeIndex]) {
+        e.preventDefault();
+        select(filtered[activeIndex]);
+      }
+    } else if (e.key === "Escape") {
+      close();
+    }
+  });
+  list.addEventListener("mousedown", (e) => {
+    const opt = e.target.closest(".combobox-option");
+    if (!opt) return;
+    e.preventDefault();
+    const i = Number(opt.dataset.index);
+    if (filtered[i]) select(filtered[i]);
+  });
+  document.addEventListener("click", (e) => {
+    if (!wrap.contains(e.target)) close();
+  });
+}
+
 /* ---------- navigation ---------- */
 
 function showView(name) {
@@ -591,3 +693,7 @@ async function loadStep7() {
 document.body.setAttribute("data-ds", state.ds);
 document.body.setAttribute("data-task", state.task);
 loadStep(1);
+
+document.getElementById("metal").value = "Cu";
+initMetalCombobox();
+apiGet("/api/datasets").then((d) => { state.datasets = d; }).catch(() => {});

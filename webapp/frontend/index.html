@@ -110,6 +110,15 @@
   .chip{ border:1px dashed var(--line); background:none; color:var(--ink-muted); font-size:12px; padding:5px 10px; border-radius:999px; cursor:pointer; font-family:var(--font-mono); }
   .chip:hover{ border-color:var(--copper); color:var(--copper); }
 
+  .combobox{ position:relative; }
+  .combobox-list{ position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:40; max-height:240px; overflow-y:auto; background:var(--surface); border:1px solid var(--line); border-radius:11px; box-shadow:0 12px 28px rgba(0,0,0,0.16); padding:4px; }
+  .combobox-option{ display:flex; align-items:baseline; gap:8px; padding:8px 10px; border-radius:8px; cursor:pointer; font-size:13.5px; }
+  .combobox-option .sym{ font-family:var(--font-mono); font-weight:700; color:var(--ink); min-width:2.2em; }
+  .combobox-option .name{ color:var(--ink-muted); font-size:12.5px; }
+  .combobox-option:hover, .combobox-option.active{ background:var(--copper-soft); }
+  .combobox-option.active .sym, .combobox-option.active .name{ color:var(--copper); }
+  .combobox-empty{ padding:10px; font-size:13px; color:var(--ink-faint); }
+
   .btn-primary{ width:100%; margin-top:18px; padding:13px; border:none; border-radius:12px; background:var(--copper); color:var(--copper-ink); font-family:var(--font-body); font-weight:700; font-size:14.5px; cursor:pointer; box-shadow:0 10px 24px rgba(182,90,44,0.28); }
   .btn-primary:hover{ filter:brightness(1.05); }
   .btn-primary:active{ transform:translateY(1px); }
@@ -287,10 +296,10 @@
 
           <div class="field ds-large">
             <label for="metal">Metal center</label>
-            <select id="metal">
-              <option>Cu</option><option>Zn</option><option>Fe</option><option>Co</option>
-              <option>Mn</option><option>Ag</option><option>Ni</option><option>Cd</option>
-            </select>
+            <div class="combobox" id="metal-combobox">
+              <input id="metal" type="text" autocomplete="off" placeholder="Search metal (e.g. Cu, Copper)" />
+              <div class="combobox-list" id="metal-combobox-list" role="listbox" hidden></div>
+            </div>
           </div>
           <p class="sub ds-small" style="margin-top:16px;">This dataset has no metal-identity column in the source data (only 6 anonymous descriptor numbers) — predictions here use the dataset's typical metal profile. See the Lab's Feature Engineering step for why.</p>
 
