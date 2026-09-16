@@ -39,7 +39,7 @@ from graph_construction import (  # noqa: E402
 
 FEATURE_SCHEME_BY_DATASET = {"small": "compact", "large": "fingerprint"}
 DEFAULT_GRAVITY_WEIGHTS = (0.33, 0.33, 0.33)
-GRAPH_SAMPLE_MAX_NODES = 70
+GRAPH_SAMPLE_MAX_NODES = 150
 
 _df_cache: dict = {}
 _features_cache: dict = {}
